@@ -1,0 +1,53 @@
+name: Terraform State Unlock & EC2 Deploy
+
+on:
+  workflow_dispatch:  # manually triggered
+    inputs:
+      lock_id:
+        description: "Terraform lock ID to unlock (get from Terraform error message)"
+        required: true
+        type: string
+
+permissions:
+  id-token: write     # Required for OIDC auth
+  contents: read
+
+jobs:
+  state-unlock:
+    name: Unlock Terraform State and Deploy EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Configure AWS credentials via OIDC
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/github-actions-oidc-role-YOUR_REPO
+          aws-region: ap-south-1   # change to your AWS region
+
+      # Step 3: Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
+
+      # Step 4: Initialize Terraform
+      - name: Terraform Init
+        run: terraform init
+
+      # Step 5: Force unlock Terraform state
+      - name: Terraform Force Unlock
+        run: terraform force-unlock -force ${{ github.event.inputs.lock_id }}
+
+      # Step 6 (Optional): Plan EC2 deployment
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      # Step 7 (Optional): Apply EC2 deployment
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan

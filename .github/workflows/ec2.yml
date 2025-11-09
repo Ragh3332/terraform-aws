@@ -1,17 +1,56 @@
-name: Deploy ec2 using IAC with AWS Authentication
+name: Deploy EC2 using Terraform (OIDC)
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      apply_terraform:
-        description: 'Do you want to apply the terraform plan'
-        required: true
-        default:  'no'
 
-env:
-  TERRAFORM_VERSION: "1.3.9"
-  TERAFORM_CONTEXT: "EC2"
+permissions:
+  id-token: write      # Required for OIDC authentication
+  contents: read       # Required to checkout code
 
-job:
-  oidc-auth:
-  
+jobs:
+  deploy-ec2:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout your code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Configure AWS credentials via OIDC
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/github-actions-oidc-role-YOUR_REPO
+          aws-region: ap-south-1   # or your AWS region
+
+      # Step 3: Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
+
+      # Step 4: Initialize Terraform
+      - name: Terraform Init
+        run: terraform init
+
+      # Step 5: Validate Terraform configuration
+      - name: Terraform Validate
+        run: terraform validate
+
+      # Step 6: Plan the Terraform changes
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      # Step 7: Apply changes on main branch only
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan
+
+      # (Optional) Step 8: Display instance details
+      - name: Show EC2 Instance Info
+        run: |
+          echo "Fetching EC2 instances..."
+          aws ec2 describe-instances --filters "Name=tag:Name,Values=my-ec2-instance" --query "Reservations[*].Instances[*].[InstanceId,State.Name,PublicIpAddress]" --output table

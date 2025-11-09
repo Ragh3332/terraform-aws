@@ -1,0 +1,52 @@
+name: Terraform State Unlock (S3 Backend)
+
+on:
+  workflow_dispatch:
+    inputs:
+      lock_id:
+        description: "Terraform lock ID to unlock (from Terraform error message)"
+        required: true
+        type: string
+
+permissions:
+  id-token: write    # Required for OIDC authentication
+  contents: read     # Required for code checkout
+
+jobs:
+  state-unlock-s3:
+    name: Unlock Terraform State in S3 Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Configure AWS credentials using OIDC
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/github-actions-oidc-role-YOUR_REPO
+          aws-region: ap-south-1  # Change as needed
+
+      # Step 3: Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
+
+      # Step 4: Initialize Terraform (important for backend config)
+      - name: Terraform Init
+        run: terraform init
+
+      # Step 5: Force Unlock the Terraform State
+      - name: Force Unlock State
+        run: terraform force-unlock -force ${{ github.event.inputs.lock_id }}
+
+      # Step 6 (Optional): Verify backend status
+      - name: Verify State Lock Table
+        run: |
+          echo "Checking DynamoDB lock table..."
+          aws dynamodb scan \
+            --table-name terraform-locks \
+            --output table || true
