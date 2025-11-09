@@ -1,0 +1,17 @@
+name: Deploy ec2 using IAC with AWS Authentication
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply_terraform:
+        description: 'Do you want to apply the terraform plan'
+        required: true
+        default:  'no'
+
+env:
+  TERRAFORM_VERSION: "1.3.9"
+  TERAFORM_CONTEXT: "EC2"
+
+job:
+  oidc-auth:
+  
